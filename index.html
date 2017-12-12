@@ -1,0 +1,301 @@
+<!DOCTYPE HTML>
+<head>
+  <title>MP7</title>
+  <link href="https://fonts.googleapis.com/css?family=Press+Start+2P" rel="stylesheet">
+  <style>
+    body { margin: 0; }
+    canvas { width: 100%; height: 100% }
+    #floorNumber {color: #ff005d; z-index: 1000; position: fixed;
+        font-family: "Press Start 2P"; font-size: 15em;
+        width: 100%; height: 100%; text-align: center; margin-top: .3em;
+      }
+    #reqGrid{
+      z-index: 1000; position: fixed;
+      margin-left: 15em; margin-top: 5em;
+      font-family: "Monaco"; font-size: 1em;
+    }
+    td {
+      border: 1px solid #ff005d; color: #ff005d;
+      width: 2.1em; height: 2em;
+      text-align: center; border-collapse: collapse;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="floorNumber">1</div>
+  <table id="reqGrid">
+    <tr>
+      <td id="t1"></td><td id="t2"></td><td id="t3"></td>
+    </tr>
+    <tr>
+      <td id="t4"></td><td id="t5"></td><td id="t6"></td>
+    </tr>
+    <tr>
+      <td id="t7"></td><td id="t8"></td><td id="t9"></td>
+    </tr>
+  </table>
+  <script src="https://threejs.org/build/three.js"></script>
+  <script>
+    var scene, camera, renderer;
+    var leftDoor, rightDoor;
+    var doorsOpen = true;
+    var floor = 1;
+    var doorDisplace = 1.1, doorDisplaceY = 2, doorDisplaceZ = 6;
+    var passCubes = []; //passenger meshes
+    var requests = []; //passenger objects
+    var healthBar;
+    var points = 50;
+
+    init();
+    animate();
+
+    function init(){
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color( 0x00035b );
+      camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+      renderer = new THREE.WebGLRenderer();
+      renderer.setSize( window.innerWidth, window.innerHeight );
+      document.body.appendChild( renderer.domElement );
+
+      //lights
+      var directionalLight = new THREE.DirectionalLight( 0xffffff, 1.5 );
+      directionalLight.position.y = 1;
+      directionalLight.position.z = 3;
+      scene.add( directionalLight );
+
+      var ambientLight = new THREE.AmbientLight( 0x3164bc );
+      scene.add( ambientLight );
+
+      //camera position
+      camera.position.z = 10;
+      camera.position.y = 3;
+
+      //initialize doors
+      var doorGeo = new THREE.BoxGeometry(2, 4, 1);
+      var doorMat = new THREE.MeshLambertMaterial({color: 0xebebeb});
+
+      leftDoor = new THREE.Mesh(doorGeo, doorMat);
+      rightDoor = new THREE.Mesh(doorGeo, doorMat);
+
+      leftDoor.position.x -= doorDisplace + 2;
+      rightDoor.position.x += doorDisplace + 2;
+      leftDoor.position.y += doorDisplaceY;
+      rightDoor.position.y += doorDisplaceY;
+      leftDoor.position.z -= doorDisplaceZ;
+      rightDoor.position.z -= doorDisplaceZ;
+
+      scene.add(leftDoor);
+      scene.add(rightDoor);
+
+      //add the ground
+      var eleGrid = new THREE.GridHelper(10, 3, 0xff6100, 0xff005d);
+      scene.add(eleGrid);
+
+      //initialize a grid of boxes
+      //but make them invisible until a passenger boards
+      var passGeo = new THREE.BoxGeometry(1.5, 1.5, 1.5);
+      var passMat = new THREE.MeshLambertMaterial({color:0xebebeb});
+      var startX = -4, startZ = -3.5;
+      for (var i = 0; i < 3; i++){
+        for (var j = 0; j < 3; j++){
+          var pass = new THREE.Mesh(passGeo, passMat);
+          pass.position.x += startX + j * 4;
+          pass.position.z = startZ;
+          passCubes.push(pass);
+          pass.visible = false;
+          scene.add(pass);
+        }
+        startZ += 3;
+      }
+
+      //health bar
+      var healthGeo = new THREE.BoxGeometry(points/10, .2, .1);
+      var healthMat = new THREE.MeshLambertMaterial({color:0xff005d});
+      healthBar = new THREE.Mesh(healthGeo, healthMat);
+      healthBar.position.z = 5.5;
+      scene.add(healthBar);
+
+      //put 2 passengers in randomly
+      for (var i = 0; i < 2; i++){
+        var rqFloor = Math.floor(Math.random() * 19) + 2;
+        var passNum = Math.floor(Math.random() * 9) + 1;
+
+        while (passCubes[passNum - 1].visible == true){
+          passNum = Math.floor(Math.random() * 9) + 1;
+        }
+
+        passCubes[passNum - 1].visible = true;
+
+        requests.push(new Passenger(rqFloor, passCubes[passNum - 1], passNum));
+      }
+    }
+
+    //PASSENGER PROTOTYPE
+    function Passenger(requestedFloor, cube, index){
+      this.requestedFloor = requestedFloor;
+      this.cube = cube;
+      this.anger = 0;
+      this.index = index;
+      document.getElementById("t"+(index)).innerHTML = this.requestedFloor;
+    }
+
+    var id;
+
+    function animate(){
+      if (points <= 0){
+        document.removeEventListener("keydown", onDocumentKeyDown);
+        document.getElementById("floorNumber").innerHTML = "GAME OVER";
+        cancelAnimationFrame( id );
+      }
+
+      //for loop through all passengers to update their anger
+      for (var i = 0; i < requests.length; i++){
+        requests[i].anger = requests[i].anger + .005;
+        //console.log(requests[i].anger);
+        if (requests[i].anger >= 3 && requests[i].anger < 3.05){
+          requests[i].cube.material.color.setHex(0xff1600);
+          points = points - .3;
+        } else if (requests[i].anger >= 2 && requests[i].anger < 2.05){
+          requests[i].cube.material.color.setHex(0xff5242);
+          points = points - .2;
+        } else if (requests[i].anger >= 1 && requests[i].anger < 1.05){
+          requests[i].cube.material.color.setHex(0xff8377);
+          points = points - .1;
+        }
+      }
+
+      //change length of health bar to match points
+      healthBar.scale.x = points/50;
+
+      id = requestAnimationFrame( animate ); //recursive
+      renderer.clear(); //do I need this?
+      renderer.render( scene, camera );
+    }
+
+    document.addEventListener("keydown", onDocumentKeyDown, false);
+    function onDocumentKeyDown(event) {
+      var keycode = event.which;
+      if (keycode == 87){
+        //PRESS W
+        if (floor < 20){
+          floor += 1;
+        }
+        document.getElementById("floorNumber").innerHTML = floor;
+
+        if (doorsOpen){
+          leftDoor.position.x += 2;
+          rightDoor.position.x -= 2;
+          doorsOpen = false;
+        }
+
+      }else if (keycode == 83){
+        //PRESS S
+        if (floor > 1){
+          floor -= 1;
+        }
+        document.getElementById("floorNumber").innerHTML = floor;
+
+        if (doorsOpen){
+          leftDoor.position.x += 2;
+          rightDoor.position.x -= 2;
+          doorsOpen = false;
+        }
+
+      } else if (keycode == 13){
+        //ENTER
+        if (doorsOpen){
+          leftDoor.position.x += 2;
+          rightDoor.position.x -= 2;
+          doorsOpen = false;
+        } else {
+          leftDoor.position.x -= 2;
+          rightDoor.position.x += 2;
+          doorsOpen = true;
+
+          //check for passengers that should be leaving
+          for (var i = 0; i < requests.length; i++){
+            console.log("hey "+requests.length);
+            console.log(requests[i].requestedFloor+", "+floor);
+            if (requests[i].requestedFloor == floor){
+              console.log("Passenger got off at floor "+floor);
+              requests[i].cube.visible = false;
+              document.getElementById("t"+(requests[i].index)).innerHTML = "";
+
+              //if you let the passenger off before really angry
+              if (requests[i].anger < 1){
+                if (points + 5 < 50){
+                  points = points + 5;
+                } else {
+                  points = 50;
+                }
+              } else if (requests[i].anger < 2){
+                if (points + 3 < 50){
+                  points = points + 3;
+                } else {
+                  points = 50;
+                }
+              } else if (requests[i].anger < 3){
+                if (points + 1 < 50){
+                  points = points + 1;
+                } else {
+                  points = 50;
+                }
+              }
+
+              //remove request entirely
+              requests.splice(i, 1);
+
+            }
+          }
+
+          var chance = Math.random() * 4;
+          //50% chance of no new passengers
+          //25% chance that 1 new passenger will board
+          //12.5% chance that 2 new passengers will board
+          //6.25% chance that 3 new passengers will board
+          //6.25% chance that 4 new passengers will board
+          //if there are no passengers...
+          if (requests.length == 0){
+            chance = Math.random() * 2;
+          }
+
+          if (chance <= 1){
+            addPassengers(1);
+          } else if (chance <= 1.5){
+            addPassengers(2);
+          } else if (chance <= 1.75){
+            addPassengers(3);
+          } else if (chance <= 2){
+            addPassengers(4);
+          }
+
+        }
+      }
+    }
+
+    function addPassengers(amount){
+      for (var i = 0; i < amount; i++){
+        if (requests.length < 9){
+          var rqFloor = Math.floor(Math.random() * 20) + 1;
+          var passNum = Math.floor(Math.random() * 9) + 1;
+
+          while (passCubes[passNum - 1].visible == true){
+            passNum = Math.floor(Math.random() * 9) + 1;
+          }
+
+          while (rqFloor == floor){
+            rqFloor = Math.floor(Math.random() * 20) + 1;
+          }
+
+          passCubes[passNum - 1].visible = true;
+
+          requests.push(new Passenger(rqFloor, passCubes[passNum - 1], passNum));
+        }
+      }
+    }
+
+
+  </script>
+
+</body>
